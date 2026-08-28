@@ -352,6 +352,7 @@ def send_halkarz_summary():
         ORDER BY listing_date DESC
         LIMIT 6
     """)
+    ipos = cursor.fetchall()
     turkish_months = {
         "Ocak": 1, "Şubat": 2, "Mart": 3, "Nisan": 4,
         "Mayıs": 5, "Haziran": 6, "Temmuz": 7, "Ağustos": 8,
