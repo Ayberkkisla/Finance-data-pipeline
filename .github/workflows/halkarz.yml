@@ -24,13 +24,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: halkarz.db
-          key: halkarz-db-${{ github.run_id }}
+          key: halkarz-db-static
           restore-keys: halkarz-db-
 
-      - name: Scrape and send IPO summary
+      - name: Send IPO summary
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          RUN_HALKARZ: '1'
           HALKARZ_SUMMARY: '1'
         run: python finance.py
