@@ -399,39 +399,17 @@ def send_halkarz_summary():
         try:
             ticker = f"{bist_code}.IS"
             print(f"  {ticker} fiyat verisi çekiliyor...")
-            data = yf.download(ticker, period="5d", interval="1d", progress=False)
+            t = yf.Ticker(ticker)
+            current_price = t.fast_info.last_price
+            yesterday_close = t.fast_info.previous_close
 
-            if not data.empty and "Close" in data.columns:
-                close_col = data["Close"]
-                high_col = data["High"]
-                low_col = data["Low"]
+            if current_price and yesterday_close:
+                daily_change = ((current_price - yesterday_close) / yesterday_close) * 100
+                arrow = "▲" if daily_change >= 0 else "▼"
+                sign = "+" if daily_change >= 0 else ""
 
-                if isinstance(close_col, pd.DataFrame):
-                    close_col = close_col.iloc[:, 0]
-                    high_col = high_col.iloc[:, 0]
-                    low_col = low_col.iloc[:, 0]
-
-                close_clean = close_col.dropna()
-
-                if len(close_clean) >= 2:
-                    today_price = float(close_clean.iloc[-1])
-                    yesterday_price = float(close_clean.iloc[-2])
-                    today_high = float(high_col.dropna().iloc[-1])
-                    today_low = float(low_col.dropna().iloc[-1])
-
-                    daily_change = ((today_price - yesterday_price) / yesterday_price) * 100
-                    arrow = "▲" if daily_change >= 0 else "▼"
-                    sign = "+" if daily_change >= 0 else ""
-
-                    msg += f"   💰 Dün: {yesterday_price:.2f} TL\n"
-                    msg += f"   📈 Bugün: {today_price:.2f} TL ({arrow} {sign}{daily_change:.1f}%)\n"
-                    msg += f"   📊 Gün Aralığı: {today_low:.2f} - {today_high:.2f} TL\n"
-                elif len(close_clean) == 1:
-                    today_price = float(close_clean.iloc[-1])
-                    msg += f"   📈 Bugün: {today_price:.2f} TL\n"
-                    msg += f"   ⚠️ Dün verisi yok\n"
-                else:
-                    msg += f"   📈 Fiyat verisi alınamadı\n"
+                msg += f"   💰 Dün: {yesterday_close:.2f} TL\n"
+                msg += f"   📈 Bugün: {current_price:.2f} TL ({arrow} {sign}{daily_change:.1f}%)\n"
             else:
                 msg += f"   📈 Fiyat verisi alınamadı\n"
         except Exception as e:
