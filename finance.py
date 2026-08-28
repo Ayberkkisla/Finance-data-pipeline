@@ -281,7 +281,7 @@ def format_ipo_message(ipo_data, is_new=False):
 def run_halkarz_pipeline():
     print("--- HALKA ARZ PIPELINE BAŞLADI ---")
 
-    db_path = "/home/ayberk/projeler/halkarz.db"
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "halkarz.db")
     conn = setup_halkarz_db(db_path)
 
     print("Halka arz listesi çekiliyor...")
@@ -369,7 +369,7 @@ except Exception as e:
     send_telegram_message(f"🚨 *Pipeline Hatası:* Veri işlenirken hata oluştu: {e}")
     sys.exit()
 
-db_path = "/home/ayberk/projeler/finance_data.db"
+db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "finance_data.db")
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
