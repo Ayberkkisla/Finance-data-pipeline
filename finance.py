@@ -429,79 +429,80 @@ def send_halkarz_summary():
 # MARKET DATA PIPELINE
 # ============================================================
 
-print("--- PIPELINE BAŞLADI ---")
+if os.environ.get("RUN_MARKET_DATA"):
+    print("--- PIPELINE BAŞLADI ---")
 
-tickers = ["TRY=X", "XU100.IS"]
-print("Piyasa verileri çekiliyor...")
+    tickers = ["TRY=X", "XU100.IS"]
+    print("Piyasa verileri çekiliyor...")
 
-try:
-    df = yf.download(tickers, period="5d", interval="1d", progress=False)
+    try:
+        df = yf.download(tickers, period="5d", interval="1d", progress=False)
 
-    if "Close" in df:
-        data = df["Close"].copy()
-    else:
-        data = df.copy()
+        if "Close" in df:
+            data = df["Close"].copy()
+        else:
+            data = df.copy()
 
-    if data.empty:
-        print("UYARI: Yahoo Finance veri döndürmedi!")
-        send_telegram_message("⚠️ *Pipeline Uyarısı:* Piyasa verisi çekilemedi.")
+        if data.empty:
+            print("UYARI: Yahoo Finance veri döndürmedi!")
+            send_telegram_message("⚠️ *Pipeline Uyarısı:* Piyasa verisi çekilemedi.")
+            sys.exit()
+
+        data = data.reset_index()
+
+        data.rename(columns={
+            "Date": "date",
+            "XU100.IS": "bist100",
+            "TRY=X": "usd_try"
+        }, inplace=True)
+
+        data["date"] = pd.to_datetime(data["date"]).dt.strftime("%Y-%m-%d")
+        data = data.ffill().dropna()
+
+    except Exception as e:
+        print(f"Veri işleme hatası: {e}")
+        send_telegram_message(f"🚨 *Pipeline Hatası:* Veri işlenirken hata oluştu: {e}")
         sys.exit()
 
-    data = data.reset_index()
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "finance_data.db")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
 
-    data.rename(columns={
-        "Date": "date",
-        "XU100.IS": "bist100",
-        "TRY=X": "usd_try"
-    }, inplace=True)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS daily_market_data (
+        date TEXT PRIMARY KEY,
+        bist100 REAL,
+        usd_try REAL
+    )
+    """)
 
-    data["date"] = pd.to_datetime(data["date"]).dt.strftime("%Y-%m-%d")
-    data = data.ffill().dropna()
+    added_count = 0
+    for index, row in data.iterrows():
+        try:
+            cursor.execute("""
+            INSERT INTO daily_market_data (date, bist100, usd_try)
+            VALUES (?, ?, ?)
+            """, (str(row["date"]), float(row["bist100"]), float(row["usd_try"])))
+            added_count += 1
+        except sqlite3.IntegrityError:
+            pass
 
-except Exception as e:
-    print(f"Veri işleme hatası: {e}")
-    send_telegram_message(f"🚨 *Pipeline Hatası:* Veri işlenirken hata oluştu: {e}")
-    sys.exit()
+    conn.commit()
+    conn.close()
 
-db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "finance_data.db")
-conn = sqlite3.connect(db_path)
-cursor = conn.cursor()
+    last_row = data.iloc[-1]
+    status_message = (
+        f"🚀 *Data Pipeline Çalıştı!*\n\n"
+        f"📊 *Yeni Eklenen Veri:* {added_count} gün\n"
+        f"📅 *Son Veri Tarihi:* {last_row['date']}\n"
+        f"💵 *Dolar/TL:* {float(last_row['usd_try']):.2f} TL\n"
+        f"📈 *BIST 100:* {float(last_row['bist100']):.2f}\n\n"
+        f"✅ Veritabanı başarıyla güncellendi."
+    )
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS daily_market_data (
-    date TEXT PRIMARY KEY,
-    bist100 REAL,
-    usd_try REAL
-)
-""")
-
-added_count = 0
-for index, row in data.iterrows():
-    try:
-        cursor.execute("""
-        INSERT INTO daily_market_data (date, bist100, usd_try)
-        VALUES (?, ?, ?)
-        """, (str(row["date"]), float(row["bist100"]), float(row["usd_try"])))
-        added_count += 1
-    except sqlite3.IntegrityError:
-        pass
-
-conn.commit()
-conn.close()
-
-last_row = data.iloc[-1]
-status_message = (
-    f"🚀 *Data Pipeline Çalıştı!*\n\n"
-    f"📊 *Yeni Eklenen Veri:* {added_count} gün\n"
-    f"📅 *Son Veri Tarihi:* {last_row['date']}\n"
-    f"💵 *Dolar/TL:* {float(last_row['usd_try']):.2f} TL\n"
-    f"📈 *BIST 100:* {float(last_row['bist100']):.2f}\n\n"
-    f"✅ Veritabanı başarıyla güncellendi."
-)
-
-print(f"İşlem Tamamlandı! {added_count} yeni gün veritabanına işlendi.")
-send_telegram_message(status_message)
-print("--- PIPELINE BİTTİ ---")
+    print(f"İşlem Tamamlandı! {added_count} yeni gün veritabanına işlendi.")
+    send_telegram_message(status_message)
+    print("--- PIPELINE BİTTİ ---")
 
 # ============================================================
 # HALKA ARZ PIPELINE
