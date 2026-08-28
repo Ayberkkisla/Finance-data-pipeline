@@ -413,4 +413,5 @@ print("--- PIPELINE BİTTİ ---")
 # HALKA ARZ PIPELINE
 # ============================================================
 
-run_halkarz_pipeline()
+if os.environ.get("RUN_HALKARZ"):
+    run_halkarz_pipeline()
