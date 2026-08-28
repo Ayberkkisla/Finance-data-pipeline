@@ -356,8 +356,6 @@ def send_halkarz_summary():
         WHERE bist_code != '' AND bist_code IS NOT NULL
           AND listing_date NOT LIKE '%Hazırlanıyor%'
           AND listing_date != '' AND listing_date IS NOT NULL
-        ORDER BY listing_date DESC
-        LIMIT 6
     """)
     ipos = cursor.fetchall()
     turkish_months = {
