@@ -1,0 +1,35 @@
+name: Halka Arz Daily Summary
+
+on:
+  schedule:
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+
+jobs:
+  halkarz-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install pandas yfinance requests beautifulsoup4
+
+      - name: Cache halkarz database
+        uses: actions/cache@v4
+        with:
+          path: halkarz.db
+          key: halkarz-db-${{ github.run_id }}
+          restore-keys: halkarz-db-
+
+      - name: Send IPO summary
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          HALKARZ_SUMMARY: '1'
+        run: python finance.py

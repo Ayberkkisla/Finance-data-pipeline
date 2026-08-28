@@ -331,6 +331,100 @@ def run_halkarz_pipeline():
     print(f"--- HALKA ARZ PIPELINE BİTTİ ---")
     return new_count
 
+def send_halkarz_summary():
+    """Son 6 halka arzın özetini ve güncel fiyatlarını gönder."""
+    print("--- HALKA ARZ ÖZETİ BAŞLADI ---")
+
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "halkarz.db")
+    if not os.path.exists(db_path):
+        print("halkarz.db bulunamadı!")
+        return
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT bist_code, company_name, ipo_date, status, price, market
+        FROM halkarz_ipos
+        WHERE price != '' AND price IS NOT NULL AND bist_code != '' AND bist_code IS NOT NULL
+        ORDER BY last_updated DESC
+        LIMIT 6
+    """)
+    ipos = cursor.fetchall()
+    conn.close()
+
+    if not ipos:
+        print("Veritabanında IPO bulunamadı!")
+        return
+
+    today = pd.Timestamp.now().strftime("%d %B %Y")
+    msg = f"📊 *Son 6 Halka Arz Özeti*\n📅 {today}\n\n"
+
+    status_emoji = {
+        "Sonuçlandı": "✅",
+        "Tamamlandı": "✅",
+        "Ertelendi": "⏰",
+        "": "📋",
+    }
+
+    for i, ipo in enumerate(ipos, 1):
+        bist_code, company_name, ipo_date, status, ipo_price_str, market = ipo
+        emoji = status_emoji.get(status, "📋")
+
+        short_name = company_name.replace(" A.Ş.", "").replace(" A.Ş", "")[:30]
+
+        msg += f"{i}. {emoji} *{bist_code}* - {short_name}\n"
+        msg += f"   📅 {ipo_date}\n"
+
+        if ipo_price_str:
+            msg += f"   💰 IPO: {ipo_price_str} TL\n"
+
+        try:
+            ticker = f"{bist_code}.IS"
+            print(f"  {ticker} güncel fiyat çekiliyor...")
+            data = yf.download(ticker, period="5d", interval="1d", progress=False)
+
+            if not data.empty and "Close" in data.columns:
+                close_col = data["Close"]
+                high_col = data["High"]
+                low_col = data["Low"]
+
+                if isinstance(close_col, pd.DataFrame):
+                    close_col = close_col.iloc[:, 0]
+                    high_col = high_col.iloc[:, 0]
+                    low_col = low_col.iloc[:, 0]
+
+                last_valid = close_col.dropna().iloc[-1] if not close_col.dropna().empty else None
+
+                if last_valid is not None:
+                    current = float(last_valid)
+                    high = float(high_col.dropna().iloc[-1])
+                    low = float(low_col.dropna().iloc[-1])
+
+                    ipo_price = float(ipo_price_str.replace(".", "").replace(",", "."))
+
+                    change_pct = ((current - ipo_price) / ipo_price) * 100
+                    arrow = "▲" if change_pct >= 0 else "▼"
+                    sign = "+" if change_pct >= 0 else ""
+
+                    msg += f"   📈 Şu an: {current:.2f} TL ({arrow} {sign}{change_pct:.1f}%)\n"
+                    msg += f"   📊 Gün: {low:.2f} - {high:.2f} TL\n"
+                else:
+                    msg += f"   📈 Güncel fiyat alınamadı\n"
+            else:
+                msg += f"   📈 Güncel fiyat alınamadı\n"
+        except Exception as e:
+            print(f"  {bist_code} fiyat hatası: {e}")
+            msg += f"   📈 Güncel fiyat alınamadı\n"
+
+        if market:
+            msg += f"   🏛️ {market}\n"
+
+        msg += "\n"
+
+    send_telegram_message(msg)
+    print("--- HALKA ARZ ÖZETİ BİTTİ ---")
+
 # ============================================================
 # MARKET DATA PIPELINE
 # ============================================================
@@ -415,3 +509,6 @@ print("--- PIPELINE BİTTİ ---")
 
 if os.environ.get("RUN_HALKARZ"):
     run_halkarz_pipeline()
+
+if os.environ.get("HALKARZ_SUMMARY"):
+    send_halkarz_summary()
