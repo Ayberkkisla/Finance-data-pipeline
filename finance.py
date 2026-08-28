@@ -347,11 +347,31 @@ def send_halkarz_summary():
         SELECT bist_code, company_name, ipo_date, status, price, market, listing_date
         FROM halkarz_ipos
         WHERE bist_code != '' AND bist_code IS NOT NULL
-        ORDER BY
-            CASE WHEN listing_date != '' AND listing_date IS NOT NULL THEN listing_date ELSE ipo_date END DESC
+          AND listing_date NOT LIKE '%Hazırlanıyor%'
+          AND listing_date != '' AND listing_date IS NOT NULL
+        ORDER BY listing_date DESC
         LIMIT 6
     """)
-    ipos = cursor.fetchall()
+    turkish_months = {
+        "Ocak": 1, "Şubat": 2, "Mart": 3, "Nisan": 4,
+        "Mayıs": 5, "Haziran": 6, "Temmuz": 7, "Ağustos": 8,
+        "Eylül": 9, "Ekim": 10, "Kasım": 11, "Aralık": 12
+    }
+
+    def parse_turkish_date(date_str):
+        if not date_str:
+            return pd.Timestamp.min
+        try:
+            parts = date_str.replace(",", "").split()
+            day = int(parts[0])
+            month = turkish_months.get(parts[1], 0)
+            year = int(parts[2])
+            return pd.Timestamp(year, month, day)
+        except:
+            return pd.Timestamp.min
+
+    ipos_sorted = sorted(ipos, key=lambda x: parse_turkish_date(x[6]), reverse=True)
+    ipos = ipos_sorted[:6]
     conn.close()
 
     if not ipos:
