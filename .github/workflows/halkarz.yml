@@ -32,5 +32,6 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           RUN_HALKARZ: '1'
+          SKIP_NOTIFICATIONS: '1'
           HALKARZ_SUMMARY: '1'
         run: python finance.py
