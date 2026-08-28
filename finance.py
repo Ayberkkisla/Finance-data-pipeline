@@ -332,7 +332,7 @@ def run_halkarz_pipeline():
     return new_count
 
 def send_halkarz_summary():
-    """Son 6 halka arzın özetini ve güncel fiyatlarını gönder."""
+    """Son 6 halka arzın günlük fiyat değişimlerini gönder."""
     print("--- HALKA ARZ ÖZETİ BAŞLADI ---")
 
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "halkarz.db")
@@ -344,10 +344,11 @@ def send_halkarz_summary():
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT bist_code, company_name, ipo_date, status, price, market
+        SELECT bist_code, company_name, ipo_date, status, price, market, listing_date
         FROM halkarz_ipos
-        WHERE price != '' AND price IS NOT NULL AND bist_code != '' AND bist_code IS NOT NULL
-        ORDER BY last_updated DESC
+        WHERE bist_code != '' AND bist_code IS NOT NULL
+        ORDER BY
+            CASE WHEN listing_date != '' AND listing_date IS NOT NULL THEN listing_date ELSE ipo_date END DESC
         LIMIT 6
     """)
     ipos = cursor.fetchall()
@@ -358,7 +359,7 @@ def send_halkarz_summary():
         return
 
     today = pd.Timestamp.now().strftime("%d %B %Y")
-    msg = f"📊 *Son 6 Halka Arz Özeti*\n📅 {today}\n\n"
+    msg = f"📊 *Son 6 Halka Arz - Günlük Değişim*\n📅 {today}\n\n"
 
     status_emoji = {
         "Sonuçlandı": "✅",
@@ -368,20 +369,16 @@ def send_halkarz_summary():
     }
 
     for i, ipo in enumerate(ipos, 1):
-        bist_code, company_name, ipo_date, status, ipo_price_str, market = ipo
+        bist_code, company_name, ipo_date, status, ipo_price_str, market, listing_date = ipo
         emoji = status_emoji.get(status, "📋")
 
-        short_name = company_name.replace(" A.Ş.", "").replace(" A.Ş", "")[:30]
+        short_name = company_name.replace(" A.Ş.", "").replace(" A.Ş", "")[:25]
 
         msg += f"{i}. {emoji} *{bist_code}* - {short_name}\n"
-        msg += f"   📅 {ipo_date}\n"
-
-        if ipo_price_str:
-            msg += f"   💰 IPO: {ipo_price_str} TL\n"
 
         try:
             ticker = f"{bist_code}.IS"
-            print(f"  {ticker} güncel fiyat çekiliyor...")
+            print(f"  {ticker} fiyat verisi çekiliyor...")
             data = yf.download(ticker, period="5d", interval="1d", progress=False)
 
             if not data.empty and "Close" in data.columns:
@@ -394,28 +391,32 @@ def send_halkarz_summary():
                     high_col = high_col.iloc[:, 0]
                     low_col = low_col.iloc[:, 0]
 
-                last_valid = close_col.dropna().iloc[-1] if not close_col.dropna().empty else None
+                close_clean = close_col.dropna()
 
-                if last_valid is not None:
-                    current = float(last_valid)
-                    high = float(high_col.dropna().iloc[-1])
-                    low = float(low_col.dropna().iloc[-1])
+                if len(close_clean) >= 2:
+                    today_price = float(close_clean.iloc[-1])
+                    yesterday_price = float(close_clean.iloc[-2])
+                    today_high = float(high_col.dropna().iloc[-1])
+                    today_low = float(low_col.dropna().iloc[-1])
 
-                    ipo_price = float(ipo_price_str.replace(".", "").replace(",", "."))
+                    daily_change = ((today_price - yesterday_price) / yesterday_price) * 100
+                    arrow = "▲" if daily_change >= 0 else "▼"
+                    sign = "+" if daily_change >= 0 else ""
 
-                    change_pct = ((current - ipo_price) / ipo_price) * 100
-                    arrow = "▲" if change_pct >= 0 else "▼"
-                    sign = "+" if change_pct >= 0 else ""
-
-                    msg += f"   📈 Şu an: {current:.2f} TL ({arrow} {sign}{change_pct:.1f}%)\n"
-                    msg += f"   📊 Gün: {low:.2f} - {high:.2f} TL\n"
+                    msg += f"   💰 Dün: {yesterday_price:.2f} TL\n"
+                    msg += f"   📈 Bugün: {today_price:.2f} TL ({arrow} {sign}{daily_change:.1f}%)\n"
+                    msg += f"   📊 Gün Aralığı: {today_low:.2f} - {today_high:.2f} TL\n"
+                elif len(close_clean) == 1:
+                    today_price = float(close_clean.iloc[-1])
+                    msg += f"   📈 Bugün: {today_price:.2f} TL\n"
+                    msg += f"   ⚠️ Dün verisi yok\n"
                 else:
-                    msg += f"   📈 Güncel fiyat alınamadı\n"
+                    msg += f"   📈 Fiyat verisi alınamadı\n"
             else:
-                msg += f"   📈 Güncel fiyat alınamadı\n"
+                msg += f"   📈 Fiyat verisi alınamadı\n"
         except Exception as e:
             print(f"  {bist_code} fiyat hatası: {e}")
-            msg += f"   📈 Güncel fiyat alınamadı\n"
+            msg += f"   📈 Fiyat verisi alınamadı\n"
 
         if market:
             msg += f"   🏛️ {market}\n"
