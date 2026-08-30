@@ -10,8 +10,6 @@ from core.scraper import scrape_halkarz_list, scrape_halkarz_detail
 def run_halkarz_pipeline():
     print("--- HALKA ARZ PIPELINE BAŞLADI ---")
 
-    skip_notifications = os.environ.get("SKIP_NOTIFICATIONS")
-
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "halkarz.db")
     conn = setup_halkarz_db(db_path)
 
@@ -20,8 +18,7 @@ def run_halkarz_pipeline():
 
     if not ipo_list:
         print("UYARI: Halka arz listesi çekilemedi!")
-        if not skip_notifications:
-            send_telegram_message("⚠️ *Halka Arz Uyarısı:* Liste verisi çekilemedi.")
+        send_telegram_message("⚠️ *Halka Arz Uyarısı:* Liste verisi çekilemedi.")
         conn.close()
         return
 
@@ -42,12 +39,9 @@ def run_halkarz_pipeline():
 
         if is_new:
             new_count += 1
-            if not skip_notifications:
-                msg = format_ipo_message(ipo, is_new=True)
-                send_telegram_message(msg)
-                print(f"  YENİ! Telegram bildirimi gönderildi.")
-            else:
-                print(f"  Yeni (bildirim atlandı).")
+            msg = format_ipo_message(ipo, is_new=True)
+            send_telegram_message(msg)
+            print(f"  YENİ! Telegram bildirimi gönderildi.")
         else:
             updated_count += 1
             print(f"  Güncellendi.")
@@ -55,15 +49,13 @@ def run_halkarz_pipeline():
     conn.commit()
     conn.close()
 
-    if not skip_notifications:
-        summary = (
-            f"📋 *Halka Arz Pipeline Tamamlandı!*\n\n"
-            f"📊 *Toplam IPO:* {len(ipo_list)}\n"
-            f"🆕 *Yeni:* {new_count}\n"
-            f"🔄 *Güncellenen:* {updated_count}\n\n"
-            f"Veritabanı: {db_path}"
-        )
-        send_telegram_message(summary)
+    summary = (
+        f"📋 *Halka Arz Pipeline Tamamlandı!*\n\n"
+        f"📊 *Toplam IPO:* {len(ipo_list)}\n"
+        f"🆕 *Yeni:* {new_count}\n"
+        f"🔄 *Güncellenen:* {updated_count}"
+    )
+    send_telegram_message(summary)
     print(f"--- HALKA ARZ PIPELINE BİTTİ ---")
     return new_count
 

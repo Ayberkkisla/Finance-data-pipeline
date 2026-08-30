@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -20,18 +22,18 @@ jobs:
       - name: Install dependencies
         run: pip install pandas yfinance requests beautifulsoup4
 
-      - name: Cache halkarz database
-        uses: actions/cache@v4
-        with:
-          path: halkarz.db
-          key: halkarz-db-static
-          restore-keys: halkarz-db-
-
       - name: Scrape and send IPO summary
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          RUN_HALKARZ: '1'
-          SKIP_NOTIFICATIONS: '1'
-          HALKARZ_SUMMARY: '1'
+          RUN_HALKARZ: 1
+          HALKARZ_SUMMARY: 1
         run: python finance.py
+
+      - name: Commit updated database
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add halkarz.db
+          git diff --cached --quiet || git commit -m "chore: update halkarz.db [skip ci]"
+          git push

@@ -12,36 +12,81 @@ HEADERS = {
 }
 
 REQUEST_DELAY = 2
+MAX_RETRIES = 3
+RETRY_DELAY = 5
 
 
-def fetch_page(url):
-    try:
-        time.sleep(REQUEST_DELAY)
-        res = requests.get(url, headers=HEADERS, timeout=30)
-        res.raise_for_status()
-        return res.text
-    except Exception as e:
-        print(f"Sayfa çekilemedi ({url}): {e}")
-        return None
+def fetch_page(url, retries=MAX_RETRIES):
+    for attempt in range(retries):
+        try:
+            time.sleep(REQUEST_DELAY)
+            res = requests.get(url, headers=HEADERS, timeout=30)
+            res.raise_for_status()
+            return res.text
+        except requests.exceptions.Timeout:
+            print(f"  [Deneme {attempt + 1}/{retries}] Zaman asimi: {url}")
+            if attempt < retries - 1:
+                time.sleep(RETRY_DELAY)
+        except requests.exceptions.ConnectionError:
+            print(f"  [Deneme {attempt + 1}/{retries}] Baglanti hatasi: {url}")
+            if attempt < retries - 1:
+                time.sleep(RETRY_DELAY)
+        except requests.exceptions.HTTPError as e:
+            print(f"  [Deneme {attempt + 1}/{retries}] HTTP hatasi ({e.response.status_code}): {url}")
+            if e.response.status_code == 429:
+                wait_time = RETRY_DELAY * (attempt + 2)
+                print(f"  Rate limit, {wait_time}s bekleniyor...")
+                time.sleep(wait_time)
+            elif attempt < retries - 1:
+                time.sleep(RETRY_DELAY)
+        except Exception as e:
+            print(f"  [Deneme {attempt + 1}/{retries}] Beklenmeyen hata: {e}")
+            if attempt < retries - 1:
+                time.sleep(RETRY_DELAY)
+    return None
+
+
+def validate_ipo(ipo_data):
+    """IPO verisini dogrula. Gerekli alanlar dolu mu kontrol et."""
+    errors = []
+
+    if not ipo_data.get("company_name") or len(ipo_data["company_name"].strip()) < 2:
+        errors.append("Sirket adi bos veya cok kisa")
+
+    if not ipo_data.get("ipo_date") or len(ipo_data["ipo_date"].strip()) < 3:
+        errors.append("Tarih bilgisi eksik")
+
+    if ipo_data.get("bist_code") and not re.match(r"^[A-Z0-9]+$", ipo_data["bist_code"]):
+        errors.append(f"Gecersiz BIST kodu: {ipo_data['bist_code']}")
+
+    return errors
 
 
 def scrape_halkarz_list():
     html = fetch_page("https://halkarz.com/")
     if not html:
+        print("HATA: Halkarz ana sayfasi cekilemedi!")
         return []
 
     soup = BeautifulSoup(html, "html.parser")
     ipos = []
 
     items = soup.select("ul.halka-arz-list li article.index-list")
+
+    if not items:
+        print("UYARI: Hic IPO bulunamadi! HTML yapisi degismis olabilir.")
+        print("  Selector: 'ul.halka-arz-list li article.index-list' sonuc dondurmedi.")
+        return []
+
     for item in items:
         try:
             badge_icon = item.select_one(".il-badge i")
             badge_text = ""
             if badge_icon:
-                if "fa-check-double" in badge_icon.get("class", []):
+                classes = badge_icon.get("class", [])
+                if "fa-check-double" in classes:
                     badge_text = "Sonuçlandı"
-                elif "fa-check" in badge_icon.get("class", []):
+                elif "fa-check" in classes:
                     badge_text = "Tamamlandı"
 
             ert_badge = item.select_one(".il-ert a")
@@ -64,24 +109,35 @@ def scrape_halkarz_list():
             if detail_url and not detail_url.startswith("http"):
                 detail_url = urljoin("https://halkarz.com/", detail_url)
 
-            ipos.append({
+            ipo = {
                 "bist_code": bist_code,
                 "company_name": company_name,
                 "ipo_date": ipo_date,
                 "status": badge_text,
                 "is_new": is_new,
                 "detail_url": detail_url,
-            })
+            }
+
+            validation_errors = validate_ipo(ipo)
+            if validation_errors:
+                print(f"  UYARI: Dogrulama hatasi ({company_name or 'BILINMEYEN'}): {', '.join(validation_errors)}")
+                if not company_name:
+                    print("  -> Sirket adi bos, bu IPO atlandi.")
+                    continue
+
+            ipos.append(ipo)
         except Exception as e:
-            print(f"Liste parse hatası: {e}")
+            print(f"  Liste parse hatasi: {e}")
             continue
 
+    print(f"  Toplam {len(items)} HTML elementi islen, {len(ipos)} gecerli IPO cikarildi.")
     return ipos
 
 
 def scrape_halkarz_detail(url):
     html = fetch_page(url)
     if not html:
+        print(f"  HATA: Detay sayfasi cekilemedi: {url}")
         return {}
 
     soup = BeautifulSoup(html, "html.parser")
@@ -133,6 +189,12 @@ def scrape_halkarz_detail(url):
             details["spk_bulletin"] = spk_match.group(1)
 
     except Exception as e:
-        print(f"Detail parse hatası: {e}")
+        print(f"  Detail parse hatasi: {e}")
+
+    extracted = len(details)
+    if extracted == 0:
+        print(f"  UYARI: Hic detay cikarilamadi: {url}")
+    else:
+        print(f"  {extracted} alan cikarildi.")
 
     return details
