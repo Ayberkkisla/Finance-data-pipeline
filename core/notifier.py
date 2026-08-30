@@ -26,10 +26,10 @@ def send_telegram_message(message):
 def format_ipo_message(ipo_data, is_new=False):
     prefix = "YENI HALKA ARZ!\n\n" if is_new else ""
     status_emoji = {
-        "Sonuclandi": "Y",
-        "Tamamlandi": "Y",
-        "Ertelendi": "E",
-        "": "L",
+        "Sonuçlandı": "✅",
+        "Tamamlandı": "✅",
+        "Ertelendi": "⏰",
+        "": "📋",
     }
     emoji = status_emoji.get(ipo_data.get("status", ""), "L")
 

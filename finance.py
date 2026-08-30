@@ -108,10 +108,10 @@ def send_halkarz_summary(new_ipos=None):
     msg += f"Son 6 Halka Arz - Gunluk Degisim\n{today}\n\n"
 
     status_emoji = {
-        "Sonuclandi": "Y",
-        "Tamamlandi": "Y",
-        "Ertelendi": "E",
-        "": "L",
+        "Sonuçlandı": "✅",
+        "Tamamlandı": "✅",
+        "Ertelendi": "⏰",
+        "": "📋",
     }
 
     for i, ipo in enumerate(ipos, 1):
