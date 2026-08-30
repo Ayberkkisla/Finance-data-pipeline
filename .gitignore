@@ -1,4 +1,4 @@
-*.db
+finance_data.db
 *.db-journal
 __pycache__/
 .venv/
