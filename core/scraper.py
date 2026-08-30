@@ -3,6 +3,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+from core.notifier import send_error_alert
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -43,11 +44,12 @@ def fetch_page(url, retries=MAX_RETRIES):
             print(f"  [Deneme {attempt + 1}/{retries}] Beklenmeyen hata: {e}")
             if attempt < retries - 1:
                 time.sleep(RETRY_DELAY)
+
+    send_error_alert("Scraper", f"URL cekilemedi ({retries} deneme basarisiz): {url}")
     return None
 
 
 def validate_ipo(ipo_data):
-    """IPO verisini dogrula. Gerekli alanlar dolu mu kontrol et."""
     errors = []
 
     if not ipo_data.get("company_name") or len(ipo_data["company_name"].strip()) < 2:
@@ -66,6 +68,7 @@ def scrape_halkarz_list():
     html = fetch_page("https://halkarz.com/")
     if not html:
         print("HATA: Halkarz ana sayfasi cekilemedi!")
+        send_error_alert("Scraper", "Halkarz ana sayfasi cekilemedi - tum denemeler basarisiz")
         return []
 
     soup = BeautifulSoup(html, "html.parser")
@@ -75,7 +78,7 @@ def scrape_halkarz_list():
 
     if not items:
         print("UYARI: Hic IPO bulunamadi! HTML yapisi degismis olabilir.")
-        print("  Selector: 'ul.halka-arz-list li article.index-list' sonuc dondurmedi.")
+        send_error_alert("Scraper", "Halkarz listesi bos dondu - HTML yapisi degismis olabilir")
         return []
 
     for item in items:
@@ -122,7 +125,6 @@ def scrape_halkarz_list():
             if validation_errors:
                 print(f"  UYARI: Dogrulama hatasi ({company_name or 'BILINMEYEN'}): {', '.join(validation_errors)}")
                 if not company_name:
-                    print("  -> Sirket adi bos, bu IPO atlandi.")
                     continue
 
             ipos.append(ipo)

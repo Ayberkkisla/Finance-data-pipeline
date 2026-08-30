@@ -8,64 +8,55 @@ from core.db_manager import setup_halkarz_db, update_halkarz_db
 from core.scraper import scrape_halkarz_list, scrape_halkarz_detail
 
 def run_halkarz_pipeline():
-    print("--- HALKA ARZ PIPELINE BAŞLADI ---")
+    print("--- HALKA ARZ PIPELINE BASLADI ---")
 
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "halkarz.db")
     conn = setup_halkarz_db(db_path)
 
-    print("Halka arz listesi çekiliyor...")
+    print("Halka arz listesi cekiliyor...")
     ipo_list = scrape_halkarz_list()
 
     if not ipo_list:
-        print("UYARI: Halka arz listesi çekilemedi!")
-        send_telegram_message("⚠️ *Halka Arz Uyarısı:* Liste verisi çekilemedi.")
+        print("UYARI: Halka arz listesi cekilemedi!")
+        send_telegram_message("Halka Arz Uyarisi: Liste verisi cekilemedi.")
         conn.close()
-        return
+        return [], 0, 0, 0
 
     print(f"Toplam {len(ipo_list)} halka arz bulundu.")
 
-    new_count = 0
+    new_ipos = []
     updated_count = 0
 
     for i, ipo in enumerate(ipo_list):
         print(f"[{i+1}/{len(ipo_list)}] {ipo['bist_code']} - {ipo['company_name'][:30]}...")
 
         if ipo["detail_url"]:
-            print(f"  Detaylar çekiliyor...")
+            print(f"  Detaylar cekiliyor...")
             details = scrape_halkarz_detail(ipo["detail_url"])
             ipo.update(details)
 
         is_new = update_halkarz_db(conn, ipo)
 
         if is_new:
-            new_count += 1
-            msg = format_ipo_message(ipo, is_new=True)
-            send_telegram_message(msg)
-            print(f"  YENİ! Telegram bildirimi gönderildi.")
+            new_ipos.append(ipo)
+            print(f"  YENI!")
         else:
             updated_count += 1
-            print(f"  Güncellendi.")
+            print(f"  Guncellendi.")
 
     conn.commit()
     conn.close()
 
-    summary = (
-        f"📋 *Halka Arz Pipeline Tamamlandı!*\n\n"
-        f"📊 *Toplam IPO:* {len(ipo_list)}\n"
-        f"🆕 *Yeni:* {new_count}\n"
-        f"🔄 *Güncellenen:* {updated_count}"
-    )
-    send_telegram_message(summary)
-    print(f"--- HALKA ARZ PIPELINE BİTTİ ---")
-    return new_count
+    return new_ipos, len(ipo_list), len(new_ipos), updated_count
 
-def send_halkarz_summary():
-    """Son 6 halka arzın günlük fiyat değişimlerini gönder."""
-    print("--- HALKA ARZ ÖZETİ BAŞLADI ---")
+
+def send_halkarz_summary(new_ipos=None):
+    """Son 6 halka arzin gunluk fiyat degisimlerini gonder. Yeni IPO varsa basa ekle."""
+    print("--- HALKA ARZ OZETI BASLADI ---")
 
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "halkarz.db")
     if not os.path.exists(db_path):
-        print("halkarz.db bulunamadı!")
+        print("halkarz.db bulunamadi!")
         return
 
     conn = sqlite3.connect(db_path)
@@ -75,14 +66,14 @@ def send_halkarz_summary():
         SELECT bist_code, company_name, ipo_date, status, price, market, listing_date
         FROM halkarz_ipos
         WHERE bist_code != '' AND bist_code IS NOT NULL
-          AND listing_date NOT LIKE '%Hazırlanıyor%'
+          AND listing_date NOT LIKE '%Hazirlaniyor%'
           AND listing_date != '' AND listing_date IS NOT NULL
     """)
     ipos = cursor.fetchall()
     turkish_months = {
-        "Ocak": 1, "Şubat": 2, "Mart": 3, "Nisan": 4,
-        "Mayıs": 5, "Haziran": 6, "Temmuz": 7, "Ağustos": 8,
-        "Eylül": 9, "Ekim": 10, "Kasım": 11, "Aralık": 12
+        "Ocak": 1, "Subat": 2, "Mart": 3, "Nisan": 4,
+        "Mayis": 5, "Haziran": 6, "Temmuz": 7, "Agustos": 8,
+        "Eylul": 9, "Ekim": 10, "Kasim": 11, "Aralik": 12
     }
 
     def parse_turkish_date(date_str):
@@ -101,65 +92,74 @@ def send_halkarz_summary():
     ipos = ipos_sorted[:6]
     conn.close()
 
-    if not ipos:
-        print("Veritabanında IPO bulunamadı!")
-        return
+    msg = ""
+
+    if new_ipos:
+        msg += "YENI HALKA ARZLAR\n\n"
+        for ipo in new_ipos:
+            code = ipo.get("bist_code", "?")
+            name = ipo.get("company_name", "N/A")[:30]
+            price = ipo.get("price", "")
+            price_str = f" - {price} TL" if price else ""
+            msg += f"  {code} - {name}{price_str}\n"
+        msg += "\n---\n\n"
 
     today = pd.Timestamp.now().strftime("%d %B %Y")
-    msg = f"📊 *Son 6 Halka Arz - Günlük Değişim*\n📅 {today}\n\n"
+    msg += f"Son 6 Halka Arz - Gunluk Degisim\n{today}\n\n"
 
     status_emoji = {
-        "Sonuçlandı": "✅",
-        "Tamamlandı": "✅",
-        "Ertelendi": "⏰",
-        "": "📋",
+        "Sonuclandi": "Y",
+        "Tamamlandi": "Y",
+        "Ertelendi": "E",
+        "": "L",
     }
 
     for i, ipo in enumerate(ipos, 1):
         bist_code, company_name, ipo_date, status, ipo_price_str, market, listing_date = ipo
-        emoji = status_emoji.get(status, "📋")
+        emoji = status_emoji.get(status, "L")
 
-        short_name = company_name.replace(" A.Ş.", "").replace(" A.Ş", "")[:25]
+        short_name = company_name.replace(" A.S.", "").replace(" A.S", "")[:25]
 
-        msg += f"{i}. {emoji} *{bist_code}* - {short_name}\n"
+        msg += f"{i}. {emoji} {bist_code} - {short_name}\n"
 
         try:
             ticker = f"{bist_code}.IS"
-            print(f"  {ticker} fiyat verisi çekiliyor...")
+            print(f"  {ticker} fiyat verisi cekiliyor...")
             t = yf.Ticker(ticker)
             current_price = t.fast_info.last_price
             yesterday_close = t.fast_info.previous_close
 
             if current_price and yesterday_close:
                 daily_change = ((current_price - yesterday_close) / yesterday_close) * 100
-                arrow = "▲" if daily_change >= 0 else "▼"
+                arrow = "YUKARI" if daily_change >= 0 else "ASAGI"
                 sign = "+" if daily_change >= 0 else ""
 
-                msg += f"   💰 Dün: {yesterday_close:.2f} TL\n"
-                msg += f"   📈 Bugün: {current_price:.2f} TL ({arrow} {sign}{daily_change:.1f}%)\n"
+                msg += f"   Dun: {yesterday_close:.2f} TL\n"
+                msg += f"   Bugun: {current_price:.2f} TL ({arrow} {sign}{daily_change:.1f}%)\n"
             else:
-                msg += f"   📈 Fiyat verisi alınamadı\n"
+                msg += f"   Fiyat verisi alinamadi\n"
         except Exception as e:
-            print(f"  {bist_code} fiyat hatası: {e}")
-            msg += f"   📈 Fiyat verisi alınamadı\n"
+            print(f"  {bist_code} fiyat hatasi: {e}")
+            msg += f"   Fiyat verisi alinamadi\n"
 
         if market:
-            msg += f"   🏛️ {market}\n"
+            msg += f"   Pazar: {market}\n"
 
         msg += "\n"
 
     send_telegram_message(msg)
-    print("--- HALKA ARZ ÖZETİ BİTTİ ---")
+    print("--- HALKA ARZ OZETI BITTI ---")
+
 
 # ============================================================
 # MARKET DATA PIPELINE
 # ============================================================
 
 if os.environ.get("RUN_MARKET_DATA"):
-    print("--- PIPELINE BAŞLADI ---")
+    print("--- PIPELINE BASLADI ---")
 
     tickers = ["TRY=X", "XU100.IS"]
-    print("Piyasa verileri çekiliyor...")
+    print("Piyasa verileri cekiliyor...")
 
     try:
         df = yf.download(tickers, period="5d", interval="1d", progress=False)
@@ -170,8 +170,8 @@ if os.environ.get("RUN_MARKET_DATA"):
             data = df.copy()
 
         if data.empty:
-            print("UYARI: Yahoo Finance veri döndürmedi!")
-            send_telegram_message("⚠️ *Pipeline Uyarısı:* Piyasa verisi çekilemedi.")
+            print("UYARI: Yahoo Finance veri dondurmedi!")
+            send_telegram_message("Pipeline Uyarisi: Piyasa verisi cekilemedi.")
             sys.exit()
 
         data = data.reset_index()
@@ -186,8 +186,8 @@ if os.environ.get("RUN_MARKET_DATA"):
         data = data.ffill().dropna()
 
     except Exception as e:
-        print(f"Veri işleme hatası: {e}")
-        send_telegram_message(f"🚨 *Pipeline Hatası:* Veri işlenirken hata oluştu: {e}")
+        print(f"Veri isleme hatasi: {e}")
+        send_telegram_message(f"Pipeline Hatasi: Veri islenirken hata olustu: {e}")
         sys.exit()
 
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "finance_data.db")
@@ -218,24 +218,31 @@ if os.environ.get("RUN_MARKET_DATA"):
 
     last_row = data.iloc[-1]
     status_message = (
-        f"🚀 *Data Pipeline Çalıştı!*\n\n"
-        f"📊 *Yeni Eklenen Veri:* {added_count} gün\n"
-        f"📅 *Son Veri Tarihi:* {last_row['date']}\n"
-        f"💵 *Dolar/TL:* {float(last_row['usd_try']):.2f} TL\n"
-        f"📈 *BIST 100:* {float(last_row['bist100']):.2f}\n\n"
-        f"✅ Veritabanı başarıyla güncellendi."
+        f"Data Pipeline Calisti!\n\n"
+        f"Yeni Eklenen Veri: {added_count} gun\n"
+        f"Son Veri Tarihi: {last_row['date']}\n"
+        f"Dolar/TL: {float(last_row['usd_try']):.2f} TL\n"
+        f"BIST 100: {float(last_row['bist100']):.2f}\n\n"
+        f"Veritabani basariyla guncellendi."
     )
 
-    print(f"İşlem Tamamlandı! {added_count} yeni gün veritabanına işlendi.")
+    print(f"Islem Tamamlandi! {added_count} yeni gun veritabanina islendi.")
     send_telegram_message(status_message)
-    print("--- PIPELINE BİTTİ ---")
+    print("--- PIPELINE BITTI ---")
 
 # ============================================================
 # HALKA ARZ PIPELINE
 # ============================================================
 
 if os.environ.get("RUN_HALKARZ"):
-    run_halkarz_pipeline()
+    new_ipos, total, new_count, updated_count = run_halkarz_pipeline()
 
-if os.environ.get("HALKARZ_SUMMARY"):
-    send_halkarz_summary()
+    if os.environ.get("HALKARZ_SUMMARY"):
+        send_halkarz_summary(new_ipos)
+
+    summary = (
+        f"Halka Arz Ozeti: {total} IPO islendi, "
+        f"{new_count} yeni, {updated_count} guncellendi"
+    )
+    send_telegram_message(summary)
+    print("--- HALKA ARZ PIPELINE BITTI ---")

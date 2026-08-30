@@ -9,7 +9,7 @@ def send_telegram_message(message):
         print("Telegram token or chat ID is not set.")
         return
 
-    url = "https://api.telegram.org/bot{}/sendMessage".format(telegram_token)
+    url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
     payload = {
         "chat_id": chat_id,
         "text": message,
@@ -21,49 +21,48 @@ def send_telegram_message(message):
         response.raise_for_status()
         print("Message sent successfully.")
     except requests.exceptions.RequestException as e:
-        print("Failed to send message: {}".format(e))
+        print(f"Failed to send message: {e}")
 
 def format_ipo_message(ipo_data, is_new=False):
-    prefix = "🆕 *YENİ HALKA ARZ!*\n\n" if is_new else ""
+    prefix = "YENI HALKA ARZ!\n\n" if is_new else ""
     status_emoji = {
-        "Sonuçlandı": "✅",
-        "Tamamlandı": "✅",
-        "Ertelendi": "⏰",
-        "": "📋",
+        "Sonuclandi": "Y",
+        "Tamamlandi": "Y",
+        "Ertelendi": "E",
+        "": "L",
     }
-    emoji = status_emoji.get(ipo_data.get("status", ""), "📋")
+    emoji = status_emoji.get(ipo_data.get("status", ""), "L")
 
-    msg = "{}{}*{}*\n".format(prefix, emoji, ipo_data.get("company_name", "N/A"))
-    msg += "📌 Kod: `{}`\n".format(ipo_data.get("bist_code", "N/A"))
-    msg += "📅 Tarih: {}\n".format(ipo_data.get("ipo_date", "N/A"))
+    msg = f"{prefix}{emoji} *{ipo_data.get('company_name', 'N/A')}*\n"
+    msg += f"Kod: `{ipo_data.get('bist_code', 'N/A')}`\n"
+    msg += f"Tarih: {ipo_data.get('ipo_date', 'N/A')}\n"
 
     if ipo_data.get("status"):
-        msg += "📊 Durum: {}\n".format(ipo_data["status"])
+        msg += f"Durum: {ipo_data['status']}\n"
 
     if ipo_data.get("price"):
-        msg += "💰 Fiyat: {} TL\n".format(ipo_data["price"])
+        msg += f"Fiyat: {ipo_data['price']} TL\n"
 
     if ipo_data.get("lot_size"):
-        msg += "📦 Lot: {}\n".format(ipo_data["lot_size"])
+        msg += f"Lot: {ipo_data['lot_size']}\n"
 
     if ipo_data.get("distribution"):
-        msg += "🔄 Dağıtım: {}\n".format(ipo_data["distribution"])
+        msg += f"Dagitim: {ipo_data['distribution']}\n"
 
     if ipo_data.get("market"):
-        msg += "🏛️ Pazar: {}\n".format(ipo_data["market"])
+        msg += f"Pazar: {ipo_data['market']}\n"
 
     if ipo_data.get("ipo_size"):
-        msg += "💵 Büyüklük: {}\n".format(ipo_data["ipo_size"])
+        msg += f"Buyukluk: {ipo_data['ipo_size']}\n"
 
     if ipo_data.get("listing_date"):
-        msg += "📈 İşlem Tarihi: {}\n".format(ipo_data["listing_date"])
+        msg += f"Islem Tarihi: {ipo_data['listing_date']}\n"
 
     if ipo_data.get("discount"):
-        msg += "📉 İskonto: {}\n".format(ipo_data["discount"])
+        msg += f"Iskonto: {ipo_data['discount']}\n"
 
     return msg
 
 def send_error_alert(component, error_msg):
-    """Hata durumunda Telegram'a acil durum bildirimi gonder."""
-    msg = "🚨 *HATA:* {}\nDetay: {}".format(component, error_msg)
+    msg = f"ALERT: {component}\nDetay: {error_msg}"
     send_telegram_message(msg)
