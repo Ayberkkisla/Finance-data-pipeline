@@ -16,8 +16,11 @@ REQUEST_DELAY = 2
 MAX_RETRIES = 3
 RETRY_DELAY = 5
 
+_alert_sent = False
+
 
 def fetch_page(url, retries=MAX_RETRIES):
+    global _alert_sent
     for attempt in range(retries):
         try:
             time.sleep(REQUEST_DELAY)
@@ -45,8 +48,15 @@ def fetch_page(url, retries=MAX_RETRIES):
             if attempt < retries - 1:
                 time.sleep(RETRY_DELAY)
 
-    send_error_alert("Scraper", f"URL cekilemedi ({retries} deneme basarisiz): {url}")
+    if not _alert_sent:
+        send_error_alert("Scraper", f"URL cekilemedi ({retries} deneme basarisiz): {url}")
+        _alert_sent = True
     return None
+
+
+def reset_alert_flag():
+    global _alert_sent
+    _alert_sent = False
 
 
 def validate_ipo(ipo_data):
@@ -65,10 +75,12 @@ def validate_ipo(ipo_data):
 
 
 def scrape_halkarz_list():
+    global _alert_sent
+    reset_alert_flag()
+
     html = fetch_page("https://halkarz.com/")
     if not html:
         print("HATA: Halkarz ana sayfasi cekilemedi!")
-        send_error_alert("Scraper", "Halkarz ana sayfasi cekilemedi - tum denemeler basarisiz")
         return []
 
     soup = BeautifulSoup(html, "html.parser")
@@ -78,7 +90,9 @@ def scrape_halkarz_list():
 
     if not items:
         print("UYARI: Hic IPO bulunamadi! HTML yapisi degismis olabilir.")
-        send_error_alert("Scraper", "Halkarz listesi bos dondu - HTML yapisi degismis olabilir")
+        if not _alert_sent:
+            send_error_alert("Scraper", "Halkarz listesi bos dondu - HTML yapisi degismis olabilir")
+            _alert_sent = True
         return []
 
     for item in items:
