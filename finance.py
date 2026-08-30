@@ -41,11 +41,19 @@ def run_halkarz_pipeline():
 
     print(f"Toplam {len(ipo_list)} halka arz bulundu.")
 
+    valid_ipos = [
+        ipo for ipo in ipo_list
+        if ipo.get("bist_code", "").strip() or ipo.get("ipo_date", "").strip()
+    ]
+    skipped = len(ipo_list) - len(valid_ipos)
+    if skipped:
+        print(f"  {skipped} ghost entry atlandı (bist_code + ipo_date bos).")
+
     new_count = 0
     updated_count = 0
 
-    for i, ipo in enumerate(ipo_list):
-        print(f"[{i+1}/{len(ipo_list)}] {ipo['bist_code']} - {ipo['company_name'][:30]}...")
+    for i, ipo in enumerate(valid_ipos):
+        print(f"[{i+1}/{len(valid_ipos)}] {ipo['bist_code'] or 'KODSIZ'} - {ipo['company_name'][:30]}...")
 
         if ipo["detail_url"]:
             print(f"  Detaylar çekiliyor...")
@@ -66,7 +74,7 @@ def run_halkarz_pipeline():
     conn.commit()
     conn.close()
 
-    return len(ipo_list), new_count, updated_count
+    return len(valid_ipos), new_count, updated_count
 
 
 def send_halkarz_summary():
