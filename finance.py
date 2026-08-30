@@ -7,6 +7,24 @@ from core.notifier import send_telegram_message, format_ipo_message
 from core.db_manager import setup_halkarz_db, update_halkarz_db
 from core.scraper import scrape_halkarz_list, scrape_halkarz_detail
 
+TURKISH_MONTHS = {
+    "Ocak": 1, "Şubat": 2, "Mart": 3, "Nisan": 4,
+    "Mayıs": 5, "Haziran": 6, "Temmuz": 7, "Ağustos": 8,
+    "Eylül": 9, "Ekim": 10, "Kasım": 11, "Aralık": 12
+}
+
+def parse_ipo_date(date_str):
+    if not date_str:
+        return pd.Timestamp.min
+    try:
+        parts = date_str.replace(",", "").split()
+        day = int(parts[0])
+        month = TURKISH_MONTHS.get(parts[1], 0)
+        year = int(parts[2])
+        return pd.Timestamp(year, month, day)
+    except:
+        return pd.Timestamp.min
+
 def run_halkarz_pipeline():
     print("--- HALKA ARZ PIPELINE BAŞLADI ---")
 
@@ -19,11 +37,10 @@ def run_halkarz_pipeline():
     if not ipo_list:
         print("UYARI: Halka arz listesi çekilemedi!")
         conn.close()
-        return [], 0, 0, 0
+        return 0, 0, 0
 
     print(f"Toplam {len(ipo_list)} halka arz bulundu.")
 
-    new_count = 0
     updated_count = 0
 
     for i, ipo in enumerate(ipo_list):
@@ -34,21 +51,22 @@ def run_halkarz_pipeline():
             details = scrape_halkarz_detail(ipo["detail_url"])
             ipo.update(details)
 
-        is_new = update_halkarz_db(conn, ipo)
-
-        if is_new:
-            new_count += 1
-            msg = format_ipo_message(ipo, is_new=True)
-            send_telegram_message(msg)
-            print(f"  YENİ! Telegram bildirimi gönderildi.")
-        else:
-            updated_count += 1
-            print(f"  Güncellendi.")
+        update_halkarz_db(conn, ipo)
+        updated_count += 1
 
     conn.commit()
     conn.close()
 
-    return [], len(ipo_list), new_count, updated_count
+    ipo_list_sorted = sorted(ipo_list, key=lambda x: parse_ipo_date(x.get("ipo_date", "")), reverse=True)
+    latest_6 = ipo_list_sorted[:6]
+
+    print(f"\nSon 6 IPO'ya detaylı bildirim gönderiliyor...")
+    for ipo in latest_6:
+        msg = format_ipo_message(ipo, is_new=True)
+        send_telegram_message(msg)
+        print(f"  {ipo['bist_code']} - {ipo['company_name'][:30]}... gönderildi.")
+
+    return len(ipo_list), len(latest_6), updated_count
 
 
 def send_halkarz_summary():
@@ -71,25 +89,8 @@ def send_halkarz_summary():
           AND listing_date != '' AND listing_date IS NOT NULL
     """)
     ipos = cursor.fetchall()
-    turkish_months = {
-        "Ocak": 1, "Şubat": 2, "Mart": 3, "Nisan": 4,
-        "Mayıs": 5, "Haziran": 6, "Temmuz": 7, "Ağustos": 8,
-        "Eylül": 9, "Ekim": 10, "Kasım": 11, "Aralık": 12
-    }
 
-    def parse_turkish_date(date_str):
-        if not date_str:
-            return pd.Timestamp.min
-        try:
-            parts = date_str.replace(",", "").split()
-            day = int(parts[0])
-            month = turkish_months.get(parts[1], 0)
-            year = int(parts[2])
-            return pd.Timestamp(year, month, day)
-        except:
-            return pd.Timestamp.min
-
-    ipos_sorted = sorted(ipos, key=lambda x: parse_turkish_date(x[6]), reverse=True)
+    ipos_sorted = sorted(ipos, key=lambda x: parse_ipo_date(x[6]), reverse=True)
     ipos = ipos_sorted[:6]
     conn.close()
 
@@ -228,14 +229,14 @@ if os.environ.get("RUN_MARKET_DATA"):
 # ============================================================
 
 if os.environ.get("RUN_HALKARZ"):
-    new_ipos, total, new_count, updated_count = run_halkarz_pipeline()
+    total, alerted, updated = run_halkarz_pipeline()
 
     if os.environ.get("HALKARZ_SUMMARY"):
         send_halkarz_summary()
 
     summary = (
         f"📋 *Halka Arz Özeti:* {total} IPO işlendi, "
-        f"{new_count} yeni, {updated_count} güncellendi"
+        f"{alerted} bildirim gönderildi, {updated} güncellendi"
     )
     send_telegram_message(summary)
     print("--- HALKA ARZ PIPELINE BİTTİ ---")
