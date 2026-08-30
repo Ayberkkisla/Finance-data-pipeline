@@ -3,7 +3,7 @@ import pandas as pd
 import yfinance as yf
 import os
 import sys
-from core.notifier import send_telegram_message
+from core.notifier import send_telegram_message, format_ipo_message
 from core.db_manager import setup_halkarz_db, update_halkarz_db
 from core.scraper import scrape_halkarz_list, scrape_halkarz_detail
 
@@ -23,7 +23,7 @@ def run_halkarz_pipeline():
 
     print(f"Toplam {len(ipo_list)} halka arz bulundu.")
 
-    new_ipos = []
+    new_count = 0
     updated_count = 0
 
     for i, ipo in enumerate(ipo_list):
@@ -37,8 +37,10 @@ def run_halkarz_pipeline():
         is_new = update_halkarz_db(conn, ipo)
 
         if is_new:
-            new_ipos.append(ipo)
-            print(f"  YENİ!")
+            new_count += 1
+            msg = format_ipo_message(ipo, is_new=True)
+            send_telegram_message(msg)
+            print(f"  YENİ! Telegram bildirimi gönderildi.")
         else:
             updated_count += 1
             print(f"  Güncellendi.")
@@ -46,11 +48,11 @@ def run_halkarz_pipeline():
     conn.commit()
     conn.close()
 
-    return new_ipos, len(ipo_list), len(new_ipos), updated_count
+    return [], len(ipo_list), new_count, updated_count
 
 
-def send_halkarz_summary(new_ipos=None):
-    """Son 6 halka arzın günlük fiyat değişimlerini gönder. Yeni IPO varsa başa ekle."""
+def send_halkarz_summary():
+    """Son 6 halka arzın günlük fiyat değişimlerini gönder."""
     print("--- HALKA ARZ ÖZETİ BAŞLADI ---")
 
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "halkarz.db")
@@ -91,20 +93,12 @@ def send_halkarz_summary(new_ipos=None):
     ipos = ipos_sorted[:6]
     conn.close()
 
-    msg = ""
-
-    if new_ipos:
-        msg += "🆕 *YENİ HALKA ARZLAR*\n\n"
-        for ipo in new_ipos:
-            code = ipo.get("bist_code", "?")
-            name = ipo.get("company_name", "N/A")[:30]
-            price = ipo.get("price", "")
-            price_str = f" - {price} TL" if price else ""
-            msg += f"  `{code}` - {name}{price_str}\n"
-        msg += "\n---\n\n"
+    if not ipos:
+        print("Veritabanında IPO bulunamadı!")
+        return
 
     today = pd.Timestamp.now().strftime("%d %B %Y")
-    msg += f"📊 *Son 6 Halka Arz - Günlük Değişim*\n📅 {today}\n\n"
+    msg = f"📊 *Son 6 Halka Arz - Günlük Değişim*\n📅 {today}\n\n"
 
     status_emoji = {
         "Sonuçlandı": "✅",
@@ -237,7 +231,7 @@ if os.environ.get("RUN_HALKARZ"):
     new_ipos, total, new_count, updated_count = run_halkarz_pipeline()
 
     if os.environ.get("HALKARZ_SUMMARY"):
-        send_halkarz_summary(new_ipos)
+        send_halkarz_summary()
 
     summary = (
         f"📋 *Halka Arz Özeti:* {total} IPO işlendi, "
