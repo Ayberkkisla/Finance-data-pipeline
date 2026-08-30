@@ -41,6 +41,7 @@ def run_halkarz_pipeline():
 
     print(f"Toplam {len(ipo_list)} halka arz bulundu.")
 
+    new_count = 0
     updated_count = 0
 
     for i, ipo in enumerate(ipo_list):
@@ -51,22 +52,21 @@ def run_halkarz_pipeline():
             details = scrape_halkarz_detail(ipo["detail_url"])
             ipo.update(details)
 
-        update_halkarz_db(conn, ipo)
-        updated_count += 1
+        is_new = update_halkarz_db(conn, ipo)
+
+        if is_new:
+            new_count += 1
+            msg = format_ipo_message(ipo, is_new=True)
+            send_telegram_message(msg)
+            print(f"  YENİ! Telegram bildirimi gönderildi.")
+        else:
+            updated_count += 1
+            print(f"  Güncellendi.")
 
     conn.commit()
     conn.close()
 
-    ipo_list_sorted = sorted(ipo_list, key=lambda x: parse_ipo_date(x.get("ipo_date", "")), reverse=True)
-    latest_6 = ipo_list_sorted[:6]
-
-    print(f"\nSon 6 IPO'ya detaylı bildirim gönderiliyor...")
-    for ipo in latest_6:
-        msg = format_ipo_message(ipo, is_new=True)
-        send_telegram_message(msg)
-        print(f"  {ipo['bist_code']} - {ipo['company_name'][:30]}... gönderildi.")
-
-    return len(ipo_list), len(latest_6), updated_count
+    return len(ipo_list), new_count, updated_count
 
 
 def send_halkarz_summary():
@@ -229,14 +229,14 @@ if os.environ.get("RUN_MARKET_DATA"):
 # ============================================================
 
 if os.environ.get("RUN_HALKARZ"):
-    total, alerted, updated = run_halkarz_pipeline()
+    total, new_count, updated_count = run_halkarz_pipeline()
 
     if os.environ.get("HALKARZ_SUMMARY"):
         send_halkarz_summary()
 
     summary = (
         f"📋 *Halka Arz Özeti:* {total} IPO işlendi, "
-        f"{alerted} bildirim gönderildi, {updated} güncellendi"
+        f"{new_count} yeni, {updated_count} güncellendi"
     )
     send_telegram_message(summary)
     print("--- HALKA ARZ PIPELINE BİTTİ ---")
