@@ -2,7 +2,7 @@ name: Financial Data Pipeline
 
 on:
   schedule:
-    - cron: '30 15 * * 1-5'
+    - cron: '0 15 * * 1-5'
   workflow_dispatch:
 
 jobs:
