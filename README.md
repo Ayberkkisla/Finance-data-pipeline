@@ -25,7 +25,10 @@ Finance-data-pipeline/
 │   └── halkarz.yml         # Halka arz günlük özeti (her gün 15:00 UTC)
 ├── halkarz.db              # Halka arz veritabanı
 ├── finance_data.db         # Piyasa verisi veritabanı (gitignore'da)
-└── requirements.txt
+├── tests/                  # pytest testleri ve HTML fixture'ları
+├── pytest.ini
+├── requirements.txt
+└── requirements-dev.txt    # Test bağımlılıkları
 ```
 
 ## Kurulum
@@ -61,6 +64,26 @@ RUN_HALKARZ=1 HALKARZ_SUMMARY=1 python finance.py
 # Piyasa verisi (BIST100, USD/TRY)
 RUN_MARKET_DATA=1 python finance.py
 ```
+
+## Testler
+
+```bash
+pip install -r requirements-dev.txt
+
+# Birim testleri (ağa çıkmaz, fixture tabanlı)
+python -m pytest
+
+# Canlı site kontrolü: halkarz.com HTML yapısı hâlâ çalışıyor mu?
+python -m pytest -m live
+```
+
+Canlı kontrol, sitenin liste ve detay sayfalarının hâlâ parse edilebildiğini doğrular; halkarz.com şablonu değişirse bu test patlar ve CI'da görünür olur (scraper ayrıca Telegram'a hata uyarısı da gönderir).
+
+## CI
+
+`.github/workflows/test.yml`:
+- Her push/PR'da birim testleri çalıştırır.
+- Her gün 06:00 UTC'de canlı halkarz.com HTML yapısı kontrolü yapar.
 
 ## Veritabanı Şemaları
 
